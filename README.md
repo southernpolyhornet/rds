@@ -41,7 +41,7 @@ Per engine: `backup.enable`, `backup.schedule`, `backup.keep`, `backup.directory
 
 ## Development
 
-`nix flake check`; `mypy dashboard/`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+`nix flake check`; `mypy dashboard/`
 
 ## License
 
