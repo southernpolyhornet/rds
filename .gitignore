@@ -1,0 +1,24 @@
+# Nix
+result
+result-*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+
+# Environment / secrets
+.env
+.env.local
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+*~

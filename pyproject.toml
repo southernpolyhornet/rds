@@ -1,0 +1,23 @@
+[project]
+name = "rds"
+version = "0.1.0"
+description = "RDS: NixOS module and dashboard for consolidated database engines"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.mypy.dashboard]
+plugins = []
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+select = ["E", "F", "I", "UP"]
+ignore = []
+

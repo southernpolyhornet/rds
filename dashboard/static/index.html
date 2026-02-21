@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RDS</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; background: #1a1a1a; color: #e0e0e0; }
+    .header { padding: 0.75rem 1rem; background: #252525; border-bottom: 1px solid #333; }
+    .tabs { display: flex; gap: 0; padding: 0 1rem; background: #252525; }
+    .tabs button { padding: 0.5rem 1rem; border: none; background: transparent; color: #888; cursor: pointer; font-size: 0.95rem; }
+    .tabs button:hover { color: #ccc; }
+    .tabs button.active { color: #fff; border-bottom: 2px solid #4a9eff; }
+    .panel { display: none; padding: 1rem; max-width: 960px; margin: 0 auto; }
+    .panel.active { display: block; }
+    .section { margin-bottom: 1.25rem; }
+    .section h3 { margin: 0 0 0.5rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888; }
+    .status { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.9rem; }
+    .status.active { background: #1a4d1a; color: #8f8; }
+    .status.inactive { background: #4d1a1a; color: #f88; }
+    .status.unknown { background: #333; color: #888; }
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .actions button { padding: 0.4rem 0.8rem; border: 1px solid #444; background: #333; color: #e0e0e0; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+    .actions button:hover { background: #444; }
+    .connect-cmd { font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.5rem; background: #252525; border-radius: 4px; overflow-x: auto; }
+    .connect-cmd + button { margin-top: 0.5rem; }
+    .browse-frame { width: 100%; height: 60vh; min-height: 400px; border: 1px solid #333; border-radius: 4px; background: #0d0d0d; }
+    .browse-placeholder { padding: 2rem; text-align: center; color: #666; border: 1px dashed #333; border-radius: 4px; }
+    .backup-list { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+    .backup-list li { padding: 0.3rem 0; font-family: ui-monospace, monospace; font-size: 0.9rem; }
+    .error { color: #f88; font-size: 0.9rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <strong>RDS</strong> — engine tabs below
+  </div>
+  <nav class="tabs" id="tabs"></nav>
+  <main id="panels"></main>
+  <script>
+    let engines = [];
+
+    function showPanel(name) {
+      document.querySelectorAll('.tabs button').forEach(b => { b.classList.toggle('active', b.dataset.engine === name); });
+      document.querySelectorAll('.panel').forEach(p => { p.classList.toggle('active', p.dataset.engine === name); });
+    }
+
+    function statusClass(s) {
+      if (s === 'active') return 'active';
+      if (s === 'inactive') return 'inactive';
+      return 'unknown';
+    }
+
+    async function fetchEngines() {
+      const r = await fetch('/api/engines');
+      if (!r.ok) return;
+      const data = await r.json();
+      engines = data.engines || [];
+      render();
+    }
+
+    function render() {
+      const tabsEl = document.getElementById('tabs');
+      const panelsEl = document.getElementById('panels');
+      tabsEl.innerHTML = '';
+      panelsEl.innerHTML = '';
+      if (!engines.length) {
+        panelsEl.innerHTML = '<div class="panel active" style="padding:2rem">No engines configured.</div>';
+        return;
+      }
+      engines.forEach((eng, i) => {
+        const name = eng.name;
+        const first = i === 0;
+        const tab = document.createElement('button');
+        tab.textContent = name;
+        tab.dataset.engine = name;
+        tab.classList.toggle('active', first);
+        tab.onclick = () => showPanel(name);
+        tabsEl.appendChild(tab);
+
+        const panel = document.createElement('div');
+        panel.className = 'panel' + (first ? ' active' : '');
+        panel.dataset.engine = name;
+        panel.innerHTML = `
+          <div class="section">
+            <h3>Status</h3>
+            <span class="status ${statusClass(eng.status)}" id="status-${name}">${eng.status}</span>
+            <div class="actions" style="margin-top:0.5rem">
+              <button data-engine="${name}" data-action="start">Start</button>
+              <button data-engine="${name}" data-action="stop">Stop</button>
+              <button data-engine="${name}" data-action="restart">Restart</button>
+            </div>
+          </div>
+          <div class="section">
+            <h3>Connect</h3>
+            <div class="connect-cmd" id="connect-${name}">${escapeHtml(eng.connectCommand || '—')}</div>
+            <button data-copy="${name}">Copy command</button>
+          </div>
+          ${eng.hasBackup ? `
+          <div class="section">
+            <h3>Backup</h3>
+            <div class="actions">
+              <button data-engine="${name}" data-action="backup-trigger">Backup now</button>
+              <button data-engine="${name}" data-action="backup-list">Refresh list</button>
+            </div>
+            <ul class="backup-list" id="backups-${name}"></ul>
+            <div class="actions" style="margin-top:0.5rem">
+              <select id="restore-${name}" style="background:#252525;color:#e0e0e0;border:1px solid #444;padding:0.3rem;border-radius:4px">
+                <option value="">— select backup —</option>
+              </select>
+              <button data-engine="${name}" data-action="restore">Restore</button>
+            </div>
+            <div id="backup-err-${name}" class="error"></div>
+          </div>
+          ` : ''}
+          <div class="section">
+            <h3>Browse</h3>
+            ${eng.browseUrl
+              ? `<iframe class="browse-frame" src="${escapeAttr(eng.browseUrl)}" title="Browse ${escapeHtml(name)}"></iframe>`
+              : '<div class="browse-placeholder">No browse URL set for this engine (e.g. pgweb for Postgres, TypeDB Studio for TypeDB).</div>'}
+          </div>
+        `;
+        panelsEl.appendChild(panel);
+      });
+
+      document.querySelectorAll('[data-action="start"]').forEach(b => b.onclick = () => action(b.dataset.engine, 'start'));
+      document.querySelectorAll('[data-action="stop"]').forEach(b => b.onclick = () => action(b.dataset.engine, 'stop'));
+      document.querySelectorAll('[data-action="restart"]').forEach(b => b.onclick = () => action(b.dataset.engine, 'restart'));
+      document.querySelectorAll('[data-action="backup-trigger"]').forEach(b => b.onclick = () => backupTrigger(b.dataset.engine));
+      document.querySelectorAll('[data-action="backup-list"]').forEach(b => b.onclick = () => backupList(b.dataset.engine));
+      document.querySelectorAll('[data-action="restore"]').forEach(b => b.onclick = () => restore(b.dataset.engine));
+      document.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copyCommand(b.dataset.copy));
+    }
+
+    function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function escapeAttr(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+    async function action(name, act) {
+      const r = await fetch(`/api/engines/${name}/${act}`, { method: 'POST' });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok) fetchEngines();
+      else alert(data.error || r.statusText);
+    }
+
+    async function backupTrigger(name) {
+      const r = await fetch(`/api/engines/${name}/backup`, { method: 'POST' });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok) backupList(name);
+      else document.getElementById(`backup-err-${name}`).textContent = data.error || r.statusText;
+    }
+
+    async function backupList(name) {
+      document.getElementById(`backup-err-${name}`).textContent = '';
+      const r = await fetch(`/api/engines/${name}/backups`);
+      const data = await r.json().catch(() => ({}));
+      const list = document.getElementById(`backups-${name}`);
+      const sel = document.getElementById(`restore-${name}`);
+      if (!r.ok) { list.innerHTML = ''; sel.innerHTML = '<option value="">— select —</option>'; return; }
+      const backups = data.backups || [];
+      list.innerHTML = backups.length ? backups.map(id => `<li>${escapeHtml(id)}</li>`).join('') : '<li>No backups yet</li>';
+      sel.innerHTML = '<option value="">— select backup —</option>' + backups.map(id => `<option value="${escapeAttr(id)}">${escapeHtml(id)}</option>`).join('');
+    }
+
+    async function restore(name) {
+      const sel = document.getElementById(`restore-${name}`);
+      const id = sel && sel.value;
+      if (!id) { alert('Select a backup'); return; }
+      const r = await fetch(`/api/engines/${name}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+      const data = await r.json().catch(() => ({}));
+      document.getElementById(`backup-err-${name}`).textContent = r.ok ? '' : (data.error || r.statusText);
+      if (r.ok) fetchEngines();
+    }
+
+    function copyCommand(name) {
+      const el = document.getElementById(`connect-${name}`);
+      if (el) navigator.clipboard.writeText(el.textContent);
+    }
+
+    fetchEngines();
+    setInterval(fetchEngines, 10000);
+  </script>
+</body>
+</html>
