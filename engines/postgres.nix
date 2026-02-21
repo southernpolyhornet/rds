@@ -155,6 +155,6 @@ in
           exec pgweb --listen=:${toString cfg.pgweb.port}
         '';
       };
-    })))
+    }))
   ]);
 }
