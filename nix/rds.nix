@@ -70,13 +70,79 @@ in
       internal = true;
       description = "Engine names registered by enabled engine modules.";
     };
+    dashboard = {
+      enable = mkEnableOption "web dashboard (status, start/stop per engine)";
+      port = mkOption {
+        type = types.port;
+        default = 8765;
+        description = "Port the dashboard listens on.";
+      };
+      listenAddress = mkOption {
+        type = types.str;
+        default = "127.0.0.1";
+        description = "Address to bind. Use 0.0.0.0 for LAN/Tailnet access.";
+      };
+      passwordFile = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Path to file containing the dashboard password. Enables HTTP Basic auth.";
+      };
+      authUsername = mkOption {
+        type = types.str;
+        default = "rds";
+        description = "HTTP Basic auth username when passwordFile is set.";
+      };
+      allowedOrigins = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "CORS allowed origins. Empty = same-origin only.";
+      };
+    };
   };
 
-  config = mkIf cfg.enable {
-    systemd.targets.rds = {
-      description = "RDS database engines";
-      wantedBy = [ "multi-user.target" ];
-    };
-    environment.systemPackages = [ cli ];
-  };
+  config = mkIf cfg.enable (let
+    dashCfg = cfg.dashboard;
+    dashboardPackage = pkgs.runCommand "rds-dashboard" { } ''
+      mkdir -p $out/static
+      cp ${../dashboard/server.py} $out/server.py
+      cp ${../dashboard/static/index.html} $out/static/index.html
+    '';
+  in mkMerge [
+    {
+      systemd.targets.rds = {
+        description = "RDS database engines";
+        wantedBy = [ "multi-user.target" ];
+      };
+      environment.systemPackages = [ cli ];
+    }
+    (mkIf dashCfg.enable {
+      systemd.services.rds-dashboard = {
+        description = "RDS web dashboard";
+        after = [ "network.target" ];
+        wantedBy = [ "multi-user.target" ];
+        path = [ cli ];
+        environment = {
+          RDS_ENGINES = concatStringsSep "," registered;
+          RDS_DASHBOARD_HOST = dashCfg.listenAddress;
+          RDS_DASHBOARD_PORT = toString dashCfg.port;
+          RDS_DASHBOARD_AUTH_USER = dashCfg.authUsername;
+          RDS_DASHBOARD_ALLOWED_ORIGINS = concatStringsSep "," dashCfg.allowedOrigins;
+        };
+        serviceConfig = {
+          Type = "simple";
+          Restart = "on-failure";
+          DynamicUser = false;
+        } // (optionalAttrs (dashCfg.passwordFile != null) {
+          LoadCredential = [ "rds-dashboard-password:${dashCfg.passwordFile}" ];
+        });
+        script = ''
+          ${optionalString (dashCfg.passwordFile != null) ''
+            export RDS_DASHBOARD_PASSWORD_FILE="''${CREDENTIALS_DIRECTORY}/rds-dashboard-password"
+          ''}
+          cd ${dashboardPackage}
+          exec ${pkgs.python3}/bin/python3 server.py
+        '';
+      };
+    })
+  ]);
 }
