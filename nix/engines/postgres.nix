@@ -70,18 +70,17 @@ in
         exec postgres -p ${toString cfg.port}
       '';
       serviceConfig = {
-        User = "postgres";
-        Group = "postgres";
+        User = cfg.user;
+        Group = cfg.group;
         Restart = "on-failure";
       };
     };
 
-    users.users.postgres = mkIf (cfg.dataDir == "/var/lib/rds/postgres") {
+    users.users.${cfg.user} = mkIf (cfg.user == "rds-admin") {
       isSystemUser = true;
-      group = "postgres";
+      group = cfg.group;
       home = cfg.dataDir;
-      createHome = true;
     };
-    users.groups.postgres = { };
+    users.groups.${cfg.group} = mkIf (cfg.group == "rds-admin") { };
   };
 }

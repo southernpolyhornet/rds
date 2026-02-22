@@ -28,6 +28,16 @@ with lib;
       default = { };
       description = "Extra environment variables for the engine process.";
     };
+    user = mkOption {
+      type = types.str;
+      default = "rds-admin";
+      description = "OS user the engine process runs as.";
+    };
+    group = mkOption {
+      type = types.str;
+      default = "rds-admin";
+      description = "OS group the engine process runs as.";
+    };
     description = mkOption {
       type = types.str;
       default = defaults.description or name;
